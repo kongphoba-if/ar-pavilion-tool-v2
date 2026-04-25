@@ -2,14 +2,13 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView - Final Fix</title>
+    <title>Pavilion SiteView - Pro Layout</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         #video-feed { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         
-        /* Forces the 3D layer to the very front */
         a-scene { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
         .a-canvas { z-index: 10 !important; }
 
@@ -20,8 +19,10 @@
             pointer-events: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .btn-row { display: flex; gap: 5px; margin-top: 10px; }
-        button { flex: 1; padding: 15px 5px; border-radius: 10px; border: none; background: #333; color: white; font-weight: bold; font-size: 11px; }
+        button { flex: 1; padding: 15px 5px; border-radius: 10px; border: none; background: #333; color: white; font-weight: bold; font-size: 11px; transition: 0.2s; }
         button.active { background: #007bff; }
+        
+        .hint-text { font-size: 9px; text-align: center; margin-top: 10px; color: #444; font-weight: bold; line-height: 1.4; }
     </style>
 </head>
 
@@ -30,7 +31,7 @@
 
     <div class="ui-panel">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:10px; font-weight:bold;">GHOSTING</label>
+            <label style="font-size:10px; font-weight:bold;">MODEL GHOSTING</label>
             <button onclick="recenter()" style="flex:none; width:100px; padding:5px; background:#007bff;">RE-CENTER</button>
         </div>
         <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)" style="width:100%; margin:10px 0;">
@@ -39,6 +40,11 @@
             <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
             <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
             <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
+        </div>
+
+        <div class="hint-text">
+            1 FINGER: ROTATE <br>
+            2 FINGERS PINCH: SCALE | 2 FINGERS SLIDE: PAN (MOVE)
         </div>
     </div>
 
@@ -51,8 +57,7 @@
 
         <a-camera position="0 1.6 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="pavilion-anchor" position="0 1 -1" rotation="0 0 0" scale="1 1 1">
-            <a-sphere radius="0.2" color="red"></a-sphere> 
+        <a-entity id="pavilion-anchor" position="0 0 -5" rotation="0 0 0" scale="1 1 1">
             <a-entity id="str" gltf-model="#m-str"></a-entity>
             <a-entity id="ext" gltf-model="#m-ext"></a-entity>
             <a-entity id="fur" gltf-model="#m-fur"></a-entity>
@@ -62,43 +67,93 @@
     </a-scene>
 
     <script>
+        // Camera setup
         const video = document.getElementById('video-feed');
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
             .then(stream => { video.srcObject = stream; });
 
         const anchor = document.getElementById('pavilion-anchor');
-        let touchStartDist = 0, initialScale = 1, touchStartX = 0, initialRotation = 0;
+        
+        // State variables for gestures
+        let initialScale = 1;
+        let initialRotation = 0;
+        let initialPosition = { x: 0, y: 0 };
+        
+        let touchStartDist = 0;
+        let touchStartX = 0;
+        let touchStartMidpoint = { x: 0, y: 0 };
 
         window.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) { touchStartX = e.touches[0].pageX; initialRotation = anchor.getAttribute('rotation').y; }
-            else if (e.touches.length === 2) { 
+            if (e.touches.length === 1) {
+                // Single finger: Prep for rotation
+                touchStartX = e.touches[0].pageX;
+                initialRotation = anchor.getAttribute('rotation').y;
+            } 
+            else if (e.touches.length === 2) {
+                // Two fingers: Prep for scale AND pan
                 touchStartDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
                 initialScale = anchor.getAttribute('scale').x;
+                
+                // Calculate midpoint for panning
+                touchStartMidpoint = {
+                    x: (e.touches[0].pageX + e.touches[1].pageX) / 2,
+                    y: (e.touches[0].pageY + e.touches[1].pageY) / 2
+                };
+                initialPosition = {
+                    x: anchor.getAttribute('position').x,
+                    y: anchor.getAttribute('position').y
+                };
             }
         });
 
         window.addEventListener('touchmove', (e) => {
             if (e.touches.length === 1) {
+                // 1 Finger: Rotate
                 let deltaX = e.touches[0].pageX - touchStartX;
                 anchor.setAttribute('rotation', `0 ${initialRotation + deltaX * 0.5} 0`);
-            } else if (e.touches.length === 2) {
-                let dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                let newScale = (dist / touchStartDist) * initialScale;
+            } 
+            else if (e.touches.length === 2) {
+                // 2 Fingers: Scale
+                let currentDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                let scaleFactor = currentDist / touchStartDist;
+                let newScale = initialScale * scaleFactor;
                 anchor.setAttribute('scale', `${newScale} ${newScale} ${newScale}`);
+
+                // 2 Fingers: Pan (Move)
+                let currentMidpoint = {
+                    x: (e.touches[0].pageX + e.touches[1].pageX) / 2,
+                    y: (e.touches[0].pageY + e.touches[1].pageY) / 2
+                };
+                
+                let deltaX = (currentMidpoint.x - touchStartMidpoint.x) * 0.01;
+                let deltaY = (currentMidpoint.y - touchStartMidpoint.y) * 0.01;
+                
+                // Update X and Y position (Z remains fixed at -5)
+                anchor.setAttribute('position', `${initialPosition.x + deltaX} ${initialPosition.y - deltaY} -5`);
             }
         });
 
-        function recenter() { anchor.setAttribute('position', '0 1 -1'); }
+        function recenter() { 
+            anchor.setAttribute('position', '0 0 -5'); 
+            anchor.setAttribute('scale', '1 1 1');
+            anchor.setAttribute('rotation', '0 0 0');
+        }
+
         function toggle(id) {
             const el = document.getElementById(id);
             el.setAttribute('visible', !el.getAttribute('visible'));
             document.getElementById('btn-' + id).classList.toggle('active');
         }
+
         function setOpacity(val) {
             document.querySelectorAll('[gltf-model]').forEach(m => {
                 const mesh = m.getObject3D('mesh');
                 if (mesh) mesh.traverse((node) => {
-                    if (node.isMesh) { node.material.transparent = true; node.material.opacity = val; }
+                    if (node.isMesh) { 
+                        node.material.transparent = true; 
+                        node.material.opacity = val; 
+                        node.material.needsUpdate = true;
+                    }
                 });
             });
         }

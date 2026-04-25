@@ -2,57 +2,55 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion AR - Manual Alignment</title>
+    <title>Pavilion SiteView - Gestures</title>
+    
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    
+    <script src="https://raw.githack.com/fcor/aframe-gesture-detector/master/dist/aframe-gesture-detector.min.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; background: transparent; }
-        .ui-container {
-            position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-            width: 94%; z-index: 1000; display: flex; flex-direction: column; gap: 8px;
-            background: rgba(255, 255, 255, 0.9); padding: 15px; border-radius: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3); font-family: sans-serif;
+        .ui-overlay {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; z-index: 1000; display: flex; flex-direction: column; gap: 10px;
+            pointer-events: none; /* Allows clicks to pass through to the 3D scene */
         }
-        .slider-group { display: flex; flex-direction: column; }
-        label { font-size: 9px; font-weight: bold; color: #333; margin-bottom: 2px; }
-        input[type=range] { width: 100%; accent-color: #007bff; }
-        .btn-row { display: flex; gap: 4px; margin-top: 5px; }
-        button { flex: 1; padding: 12px 5px; border-radius: 8px; border: 1px solid #ccc; background: white; font-weight: bold; font-size: 10px; }
+        .ui-card { 
+            background: rgba(255, 255, 255, 0.9); padding: 15px; border-radius: 20px; 
+            pointer-events: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .btn-row { display: flex; gap: 5px; margin-top: 10px; }
+        button { flex: 1; padding: 15px 5px; border-radius: 10px; border: none; background: #eee; font-weight: bold; font-size: 10px; }
         button.active { background: #333; color: white; }
-        #loading-screen { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px; font-size: 10px; z-index: 2000; }
+        input[type=range] { width: 100%; accent-color: #007bff; }
+        #status-bar { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 10px; z-index: 2000; }
     </style>
 </head>
 
-<body>
-    <div id="loading-screen">Checking files...</div>
+<body gesture-detector>
+    <div id="status-bar">Initializing Engine...</div>
 
-    <div class="ui-container">
-        <button onclick="resetPosition()" style="background:#007bff; color:white; margin-bottom:5px;">BRING MODEL TO ME</button>
-
-        <div class="slider-group">
-            <label>Manual Rotation</label>
-            <input type="range" min="0" max="360" value="0" oninput="updateTransform('rotation', this.value)">
-        </div>
-        <div class="slider-group">
-            <label>Manual Scale</label>
-            <input type="range" min="0.1" max="30" step="0.1" value="4" oninput="updateTransform('scale', this.value)">
-        </div>
-        <div class="slider-group">
-            <label>Ghosting (Opacity)</label>
+    <div class="ui-overlay">
+        <div class="ui-card">
+            <label style="font-size: 10px; font-weight: bold; font-family: sans-serif;">GHOSTING (OPACITY)</label>
             <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
-        </div>
-
-        <div class="btn-row">
-            <button id="btn-str" class="active" onclick="toggleLayer('str')">STRUCTURE</button>
-            <button id="btn-ext" class="active" onclick="toggleLayer('ext')">EXTERIOR</button>
-            <button id="btn-fur" class="active" onclick="toggleLayer('fur')">FURNITURE</button>
+            
+            <div class="btn-row">
+                <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
+                <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
+                <button id="btn-fur" class="active" onclick="toggleLayer('fur')">FURNITURE</button>
+            </div>
+            <p style="font-size: 9px; text-align: center; margin-top: 10px; opacity: 0.6;">
+                1 FINGER: Rotate | 2 FINGERS: Pinch to Scale
+            </p>
         </div>
     </div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no;" 
-        embedded color-space="sRGB" renderer="alpha: true; transparent: true;" vr-mode-ui="enabled: false">
+        embedded color-space="sRGB" renderer="alpha: true; transparent: true;" 
+        vr-mode-ui="enabled: false" raycaster="objects: .clickable">
         
         <a-assets>
             <a-asset-item id="m-str" src="str.glb"></a-asset-item>
@@ -60,11 +58,18 @@
             <a-asset-item id="m-fur" src="fur.glb"></a-asset-item>
         </a-assets>
 
-        <a-camera id="cam" position="0 1.6 0" look-controls></a-camera>
+        <a-camera id="main-cam" position="0 1.6 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="pavilion-anchor" position="0 0 -3" rotation="0 0 0" scale="4 4 4">
-            <a-box id="debug-box" position="0 0.5 0" scale="0.3 0.3 0.3" color="red"></a-box>
+        <a-entity 
+            id="pavilion-anchor" 
+            class="clickable"
+            position="0 0.5 -3" 
+            rotation="0 0 0" 
+            scale="2 2 2"
+            gesture-handler>
             
+            <a-sphere radius="0.1" color="red" position="0 0 0"></a-sphere>
+
             <a-entity id="str" gltf-model="#m-str"></a-entity>
             <a-entity id="ext" gltf-model="#m-ext"></a-entity>
             <a-entity id="fur" gltf-model="#m-fur"></a-entity>
@@ -73,38 +78,23 @@
     </a-scene>
 
     <script>
+        const status = document.getElementById('status-bar');
         const anchor = document.getElementById('pavilion-anchor');
-        const loader = document.getElementById('loading-screen');
 
-        // Check if models are actually loading
-        document.getElementById('m-str').addEventListener('loaded', () => { loader.innerText = "Files Loaded!"; });
+        // Logic to update status bar
+        document.querySelector('a-scene').addEventListener('render-target-loaded', () => {
+            status.innerText = "Camera Active. Use Fingers to Adjust.";
+        });
 
-        // 1. THE "BRING TO ME" FUNCTION
-        function resetPosition() {
-            const cam = document.getElementById('cam');
-            // This grabs the direction the camera is pointing
-            const direction = new THREE.Vector3();
-            cam.object3D.getWorldDirection(direction);
-            
-            // Move anchor 3 meters in front of the camera
-            anchor.object3D.position.set(
-                cam.object3D.position.x - (direction.x * 3),
-                cam.object3D.position.y - 1.6, // Place it on the floor
-                cam.object3D.position.z - (direction.z * 3)
-            );
-        }
-
-        function updateTransform(type, val) {
-            if (type === 'rotation') anchor.setAttribute('rotation', `0 ${val} 0`);
-            else if (type === 'scale') anchor.setAttribute('scale', `${val} ${val} ${val}`);
-        }
-
-        function toggleLayer(id) {
+        // Layer Toggling
+        function toggle(id) {
             const el = document.getElementById(id);
-            el.setAttribute('visible', !el.getAttribute('visible'));
+            const isVisible = el.getAttribute('visible');
+            el.setAttribute('visible', !isVisible);
             document.getElementById('btn-' + id).classList.toggle('active');
         }
 
+        // Opacity / Ghosting
         function setOpacity(val) {
             document.querySelectorAll('[gltf-model]').forEach(m => {
                 const mesh = m.getObject3D('mesh');
@@ -118,6 +108,28 @@
                 }
             });
         }
+
+        // CUSTOM GESTURE HANDLER (Integrated for reliability)
+        AFRAME.registerComponent('gesture-handler', {
+            schema: { enabled: { default: true } },
+            init: function () {
+                this.handleRotation = this.handleRotation.bind(this);
+                this.handleScale = this.handleScale.bind(this);
+                this.el.sceneEl.addEventListener('onefingermove', this.handleRotation);
+                this.el.sceneEl.addEventListener('twofingermove', this.handleScale);
+            },
+            handleRotation: function (event) {
+                if (this.data.enabled) {
+                    this.el.object3D.rotation.y += event.detail.positionChange.x * 0.01;
+                }
+            },
+            handleScale: function (event) {
+                if (this.data.enabled) {
+                    const s = this.el.object3D.scale.x * event.detail.spreadChange;
+                    this.el.object3D.scale.set(s, s, s);
+                }
+            }
+        });
     </script>
 </body>
 </html>

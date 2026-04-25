@@ -5,46 +5,36 @@
     <title>Pavilion SiteView AR</title>
     
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
-        /* 2. TRANSPARENCY FIX: Ensures the 3D layer is clear so camera shows through */
-        body { margin: 0; overflow: hidden; background-color: transparent; }
-        
-        a-scene, .a-canvas {
-            background-color: transparent !important;
-        }
-
-        /* UI STYLING */
-        .ui { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; display: flex; flex-direction: column; gap: 10px; }
-        .row { display: flex; gap: 6px; }
-        button { flex: 1; padding: 20px 5px; border-radius: 12px; border: none; background: #fff; font-weight: bold; font-family: sans-serif; font-size: 11px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
-        button.active { background: #333; color: #fff; }
-        .control-panel { background: rgba(255,255,255,0.9); padding: 12px; border-radius: 15px; display: flex; flex-direction: column; gap: 5px; }
-        input[type=range] { width: 100%; accent-color: #333; }
-        label { font-family: sans-serif; font-weight: bold; font-size: 10px; color: #333; }
+        body { margin: 0; overflow: hidden; background: none; }
+        .ui { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; display: flex; flex-direction: column; gap: 10px; }
+        button { flex: 1; padding: 15px; border-radius: 10px; border: none; background: white; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        button.active { background: #333; color: white; }
+        .slider-box { background: rgba(255,255,255,0.8); padding: 10px; border-radius: 10px; display: flex; flex-direction: column; }
     </style>
 </head>
 
 <body>
     <div class="ui">
-        <div class="control-panel">
-            <label>SITE OPACITY (GHOSTING)</label>
-            <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="updateOpacity(this.value)">
+        <div class="slider-box">
+            <label style="font-size:10px; font-weight:bold; font-family:sans-serif;">GHOSTING</label>
+            <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
         </div>
-        <div class="row">
-            <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
-            <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
-            <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
+        <div style="display:flex; gap:5px;">
+            <button id="btn-str" class="active" onclick="toggle('str')">STR</button>
+            <button id="btn-ext" class="active" onclick="toggle('ext')">EXT</button>
+            <button id="btn-fur" class="active" onclick="toggle('fur')">FUR</button>
         </div>
     </div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: yes;" 
-        embedded
-        color-space="sRGB"
-        renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; alpha: true; transparent: true;" 
-        vr-mode-ui="enabled: false"
+        embedded 
+        color-space="sRGB" 
+        renderer="colorManagement: true; alpha: true; antialias: true;" 
+        vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
         
         <a-assets>
@@ -56,65 +46,34 @@
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
         <a-entity mindar-image-target="targetIndex: 0">
-            <a-entity class="model-root" scale="4 4 4">
-                <a-entity id="str" gltf-model="#m-str"></a-entity>
-                <a-entity id="ext" gltf-model="#m-ext"></a-entity>
-                <a-entity id="fur" gltf-model="#m-fur"></a-entity>
+            <a-entity id="pavilion" scale="4 4 4">
+                <a-entity id="str" gltf-model="#m-str" visible="true"></a-entity>
+                <a-entity id="ext" gltf-model="#m-ext" visible="true"></a-entity>
+                <a-entity id="fur" gltf-model="#m-fur" visible="true"></a-entity>
             </a-entity>
         </a-entity>
-
-        <a-entity mindar-image-target="targetIndex: 1">
-            <a-entity class="model-root" scale="4 4 4" position="-15 0 0">
-                <a-entity gltf-model="#m-str"></a-entity>
-            </a-entity>
-        </a-entity>
-
-        <a-entity mindar-image-target="targetIndex: 2">
-            <a-entity class="model-root" scale="4 4 4" position="-15 0 18">
-                <a-entity gltf-model="#m-str"></a-entity>
-            </a-entity>
-        </a-entity>
-
-        <a-entity mindar-image-target="targetIndex: 3">
-            <a-entity class="model-root" scale="4 4 4" position="0 0 18">
-                <a-entity gltf-model="#m-str"></a-entity>
-            </a-entity>
-        </a-entity>
-
     </a-scene>
 
     <script>
-        // TOGGLE LAYERS
         function toggle(id) {
             const el = document.getElementById(id);
-            const vis = el.getAttribute('visible');
-            el.setAttribute('visible', !vis);
+            el.setAttribute('visible', !el.getAttribute('visible'));
             document.getElementById('btn-'+id).classList.toggle('active');
         }
 
-        // UPDATE OPACITY (GHOSTING)
-        function updateOpacity(val) {
-            const models = document.querySelectorAll('[gltf-model]');
-            models.forEach(m => {
+        function setOpacity(val) {
+            document.querySelectorAll('[gltf-model]').forEach(m => {
                 const mesh = m.getObject3D('mesh');
                 if (mesh) {
                     mesh.traverse((node) => {
                         if (node.isMesh) {
                             node.material.transparent = true;
                             node.material.opacity = val;
-                            node.material.needsUpdate = true;
                         }
                     });
                 }
             });
         }
-
-        // Apply opacity automatically when models load
-        document.querySelectorAll('[gltf-model]').forEach(m => {
-            m.addEventListener('model-loaded', () => {
-                updateOpacity(document.querySelector('input[type=range]').value);
-            });
-        });
     </script>
 </body>
 </html>

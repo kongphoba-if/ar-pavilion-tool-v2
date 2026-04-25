@@ -2,88 +2,103 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Debug Mode</title>
+    <title>Pavilion AR - Final Fix</title>
+    
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
-        body { margin: 0; background: #000; color: white; font-family: sans-serif; }
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
         #debug-log { 
-            position: fixed; top: 10px; left: 10px; width: 90%; 
-            height: 30%; font-size: 10px; color: #0f0; overflow-y: auto; 
-            background: rgba(0,0,0,0.8); z-index: 3000; pointer-events: none;
+            position: fixed; top: 0; left: 0; width: 100%; 
+            height: 25%; font-size: 11px; color: #0f0; overflow-y: auto; 
+            background: rgba(0,0,0,0.85); z-index: 3000; padding: 10px; border-bottom: 1px solid #333;
         }
-        #btn-container {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 2000; text-align: center;
+        #center-ui {
+            position: fixed; top: 60%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 2000; text-align: center; width: 80%;
         }
-        .main-btn { padding: 20px 40px; background: #007bff; color: white; border: none; border-radius: 10px; font-size: 18px; cursor: pointer; }
+        .main-btn { 
+            padding: 20px 30px; background: #007bff; color: white; 
+            border: none; border-radius: 50px; font-size: 16px; font-weight: bold;
+            box-shadow: 0 10px 20px rgba(0,123,255,0.3);
+        }
     </style>
 </head>
 
 <body>
-    <div id="debug-log">SYSTEM LOG: Waiting for user...<br></div>
+    <div id="debug-log">INITIALIZING...<br></div>
 
-    <div id="btn-container">
-        <button id="startBtn" class="main-btn">FORCE START CAMERA</button>
-        <p id="status-text" style="margin-top:10px; font-size:12px;">Ensure targets.mind is in this folder.</p>
+    <div id="center-ui">
+        <button id="startBtn" class="main-btn">ENABLE SITE AR</button>
+        <p style="font-size:10px; opacity:0.6; margin-top:15px;">Ensure you are on HTTPS</p>
     </div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;" 
-        embedded color-space="sRGB" renderer="alpha: true;" vr-mode-ui="enabled: false">
+        embedded color-space="sRGB" renderer="alpha: true; antialias: true;" vr-mode-ui="enabled: false">
         
         <a-assets>
             <a-asset-item id="model" src="str.glb"></a-asset-item>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
         <a-entity mindar-image-target="targetIndex: 0">
             <a-entity gltf-model="#model" scale="4 4 4"></a-entity>
         </a-entity>
     </a-scene>
 
     <script>
-        const log = (msg, isError = false) => {
-            const div = document.getElementById('debug-log');
-            div.innerHTML += `<span style="color:${isError ? 'red' : '#0f0'}">${msg}</span><br>`;
-            console.log(msg);
+        const log = (msg, isErr = false) => {
+            const d = document.getElementById('debug-log');
+            d.innerHTML += `<span style="color:${isErr ? '#ff4d4d' : '#0f0'}">${msg}</span><br>`;
+            d.scrollTop = d.scrollHeight;
         };
 
-        window.onerror = (e) => log("JS ERROR: " + e, true);
-
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            log("Attempting to start AR...");
-            const sceneEl = document.querySelector('a-scene');
+        // 1. CHECK IF LIBRARIES LOADED CORRECTLY
+        window.addEventListener('load', () => {
+            if (typeof AFRAME === 'undefined') log("ERROR: A-Frame failed to load!", true);
+            else log("A-Frame 1.4.2 Loaded.");
             
-            try {
-                // Manually start the system
-                const arSystem = sceneEl.systems["mindar-image-system"];
-                if (!arSystem) {
-                    log("CRITICAL: MindAR System not found in scene!", true);
-                    return;
+            // Check if MindAR registered its system
+            setTimeout(() => {
+                const scene = document.querySelector('a-scene');
+                if (scene.systems['mindar-image-system']) {
+                    log("MindAR Engine: READY");
+                } else {
+                    log("ERROR: MindAR System not registered. Check script order.", true);
                 }
-                
-                log("Requesting Camera Permissions...");
-                await arSystem.start(); 
-                
-                log("Camera Active! Hiding UI...");
-                document.getElementById('btn-container').style.display = 'none';
-            } catch (err) {
-                log("STARTUP FAILED: " + err, true);
-                if (err.name === 'NotAllowedError') {
-                    log("PERMISSION DENIED: You must reset camera settings in Chrome.", true);
-                }
-            }
+            }, 500);
         });
 
-        // Check if targets file exists
-        fetch('./targets.mind').then(res => {
-            if(res.ok) log("Target file found: targets.mind");
-            else log("FILE ERROR: targets.mind not found (404)", true);
-        }).catch(e => log("NET ERROR: " + e, true));
+        // 2. FETCH CHECK FOR TARGETS
+        fetch('./targets.mind').then(r => r.ok ? log("Found targets.mind") : log("Missing targets.mind", true));
+
+        // 3. START BUTTON LOGIC
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            log("User triggered Start...");
+            const sceneEl = document.querySelector('a-scene');
+            const arSystem = sceneEl.systems["mindar-image-system"];
+            
+            if (!arSystem) {
+                log("STILL MISSING: MindAR system not found. Refreshing page may help.", true);
+                return;
+            }
+
+            try {
+                log("Requesting S24 Ultra Camera...");
+                await arSystem.start();
+                log("SUCCESS: Camera active.");
+                document.getElementById('center-ui').style.display = 'none';
+                document.getElementById('debug-log').style.display = 'none';
+            } catch (err) {
+                log("CAMERA ERROR: " + err.name, true);
+                if (err.name === 'NotAllowedError') log("ACTION REQUIRED: Reset Chrome Camera permissions.", true);
+            }
+        });
     </script>
 </body>
 </html>

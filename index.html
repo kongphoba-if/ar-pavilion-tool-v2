@@ -2,99 +2,93 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView AR</title>
+    <title>Pavilion AR - Force Start</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #start-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif; }
-        #start-button { padding: 20px 40px; font-size: 18px; font-weight: bold; border-radius: 50px; border: none; background: #007bff; color: white; cursor: pointer; }
+        body { margin: 0; overflow: hidden; background-color: #000; }
         
-        .ui { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; display: none; flex-direction: column; gap: 10px; }
-        .active-ui { display: flex !important; }
+        /* UI is hidden until camera starts */
+        #ui-overlay { 
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+            z-index: 1000; width: 90%; display: none; flex-direction: column; gap: 10px; 
+        }
         
-        button.nav-btn { flex: 1; padding: 15px; border-radius: 10px; border: none; background: white; font-weight: bold; }
-        button.active { background: #333; color: white; }
-        .slider-box { background: rgba(255,255,255,0.8); padding: 10px; border-radius: 10px; }
+        .control-btn { padding: 15px; border-radius: 10px; border: none; background: white; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        
+        /* The "Emergency" start button if auto-start fails */
+        #manual-start {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 2000; padding: 25px 40px; background: #007bff; color: white;
+            border: none; border-radius: 50px; font-weight: bold; font-size: 18px;
+        }
     </style>
 </head>
 
 <body>
-    <div id="start-screen">
-        <h2 style="margin-bottom:20px;">PAVILION AR</h2>
-        <button id="start-button">START CAMERA</button>
-        <p style="font-size:12px; margin-top:20px; color:#aaa;">Ensure you are on HTTPS</p>
-    </div>
+    <button id="manual-start" onclick="startAR()">ACTIVATE AR VIEW</button>
 
-    <div class="ui" id="main-ui">
-        <div class="slider-box">
-            <label style="font-size:10px; font-weight:bold;">GHOSTING</label>
-            <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
-        </div>
-        <div style="display:flex; gap:5px;">
-            <button id="btn-str" class="active nav-btn" onclick="toggle('str')">STR</button>
-            <button id="btn-ext" class="active nav-btn" onclick="toggle('ext')">EXT</button>
-            <button id="btn-fur" class="active nav-btn" onclick="toggle('fur')">FUR</button>
-        </div>
+    <div id="ui-overlay">
+        <button class="control-btn" onclick="updateOpacity(0.5)">GHOST MODE (50%)</button>
+        <button class="control-btn" onclick="updateOpacity(1.0)">SOLID MODE (100%)</button>
     </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;" 
+        id="scene"
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;" 
         embedded 
+        color-space="sRGB" 
         renderer="colorManagement: true; alpha: true;" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
         
         <a-assets>
             <a-asset-item id="m-str" src="str.glb"></a-asset-item>
-            <a-asset-item id="m-ext" src="ext.glb"></a-asset-item>
-            <a-asset-item id="m-fur" src="fur.glb"></a-asset-item>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
         <a-entity mindar-image-target="targetIndex: 0">
-            <a-entity id="pavilion" scale="4 4 4">
-                <a-entity id="str" gltf-model="#m-str"></a-entity>
-                <a-entity id="ext" gltf-model="#m-ext"></a-entity>
-                <a-entity id="fur" gltf-model="#m-fur"></a-entity>
-            </a-entity>
+            <a-entity gltf-model="#m-str" scale="4 4 4" id="target-model"></a-entity>
         </a-entity>
     </a-scene>
 
     <script>
-        const startBtn = document.querySelector('#start-button');
         const sceneEl = document.querySelector('a-scene');
-        const startScreen = document.querySelector('#start-screen');
-        const mainUI = document.querySelector('#main-ui');
+        const startBtn = document.querySelector('#manual-start');
+        const uiOverlay = document.querySelector('#ui-overlay');
 
-        startBtn.addEventListener('click', () => {
-            // Force start the MindAR engine via user gesture
-            sceneEl.systems['mindar-image-system'].start(); 
-            startScreen.style.display = 'none';
-            mainUI.classList.add('active-ui');
+        function startAR() {
+            // 1. Manually trigger the MindAR start sequence
+            const arSystem = sceneEl.systems["mindar-image-system"];
+            arSystem.start(); 
+
+            // 2. Hide the button and show the UI
+            startBtn.style.display = 'none';
+            uiOverlay.style.display = 'flex';
+            
+            console.log("AR System Started Manually");
+        }
+
+        function updateOpacity(val) {
+            const model = document.querySelector('#target-model');
+            const mesh = model.getObject3D('mesh');
+            if (mesh) {
+                mesh.traverse((node) => {
+                    if (node.isMesh) {
+                        node.material.transparent = true;
+                        node.material.opacity = val;
+                    }
+                });
+            }
+        }
+
+        // Auto-fix for S24 Ultra orientation/camera bugs
+        window.addEventListener('resize', () => {
+            sceneEl.resize();
         });
-
-        function toggle(id) {
-            const el = document.getElementById(id);
-            el.setAttribute('visible', !el.getAttribute('visible'));
-            document.getElementById('btn-'+id).classList.toggle('active');
-        }
-
-        function setOpacity(val) {
-            document.querySelectorAll('[gltf-model]').forEach(m => {
-                const mesh = m.getObject3D('mesh');
-                if (mesh) {
-                    mesh.traverse((node) => {
-                        if (node.isMesh) {
-                            node.material.transparent = true;
-                            node.material.opacity = parseFloat(val);
-                        }
-                    });
-                }
-            });
-        }
     </script>
 </body>
 </html>

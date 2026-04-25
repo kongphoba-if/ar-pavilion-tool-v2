@@ -2,138 +2,84 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView - Hybrid Manual</title>
-    
+    <title>Pavilion SiteView - Deep Debug</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background: none; }
-        
-        /* The UI you liked from the screenshot */
+        body { margin: 0; overflow: hidden; background: #000; }
+        #debug-ui {
+            position: fixed; top: 10px; left: 10px; width: 90%;
+            z-index: 2000; background: rgba(0,0,0,0.8);
+            color: #0f0; padding: 10px; font-family: monospace; font-size: 10px;
+        }
         .ui-container {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 92%; z-index: 1000; display: flex; flex-direction: column; gap: 10px;
-            font-family: sans-serif; pointer-events: none;
+            width: 90%; z-index: 1000; background: white; padding: 15px; border-radius: 20px;
         }
-        .ui-card { 
-            background: rgba(255, 255, 255, 0.9); padding: 15px; border-radius: 20px; 
-            pointer-events: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-        .btn-row { display: flex; gap: 5px; margin-top: 10px; }
-        button { flex: 1; padding: 18px 5px; border-radius: 12px; border: none; background: #333; color: white; font-weight: bold; font-size: 11px; }
-        button.inactive { background: #eee; color: #333; }
-        
-        input[type=range] { width: 100%; accent-color: #333; margin-top: 5px; }
-        label { font-size: 10px; font-weight: bold; color: #333; }
-        
-        #status { position: fixed; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; font-size: 10px; z-index: 2000; border-radius: 5px; }
+        button { width: 100%; padding: 15px; background: #333; color: white; border-radius: 10px; font-weight: bold; }
     </style>
 </head>
 
 <body>
-    <div id="status">Loading Pavilion Assets...</div>
+    <div id="debug-ui">
+        LOG: Initializing...<br>
+        <span id="file-status">Files: Checking...</span>
+    </div>
 
     <div class="ui-container">
-        <div class="ui-card">
-            <label>MODEL GHOSTING (TRANSPARENCY)</label>
-            <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
-            
-            <div class="btn-row">
-                <button id="btn-str" onclick="toggle('str')">STRUCTURE</button>
-                <button id="btn-ext" onclick="toggle('ext')">EXTERIOR</button>
-                <button id="btn-fur" onclick="toggle('fur')">FURNITURE</button>
-            </div>
-            <p style="font-size: 9px; text-align: center; margin-top: 8px; opacity: 0.6; color: #333;">
-                DRAG: Rotate | PINCH: Scale
-            </p>
-        </div>
+        <button onclick="recenter()">FORCE RECENTER MODEL</button>
+        <p style="font-size: 9px; text-align: center; margin-top: 10px;">
+            If you see a RED BOX, the code is working.
+        </p>
     </div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no;" 
-        embedded color-space="sRGB" 
-        renderer="colorManagement: true; alpha: true; transparent: true; antialias: true;" 
-        vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false">
+        embedded renderer="alpha: true; transparent: true;" vr-mode-ui="enabled: false">
         
         <a-assets>
             <a-asset-item id="m-str" src="str.glb"></a-asset-item>
-            <a-asset-item id="m-ext" src="ext.glb"></a-asset-item>
-            <a-asset-item id="m-fur" src="fur.glb"></a-asset-item>
         </a-assets>
 
-        <a-camera position="0 1.6 0" look-controls="enabled: false"></a-camera>
+        <a-camera id="cam" position="0 1.6 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="pavilion-anchor" position="0 -1 -5" scale="4 4 4">
-            <a-entity id="str" gltf-model="#m-str"></a-entity>
-            <a-entity id="ext" gltf-model="#m-ext"></a-entity>
-            <a-entity id="fur" gltf-model="#m-fur"></a-entity>
+        <a-entity id="anchor" position="0 0 -3">
+            
+            <a-box id="test-cube" position="0 0.5 0" scale="0.5 0.5 0.5" color="red"></a-box>
+
+            <a-entity id="pavilion" gltf-model="#m-str" scale="1 1 1"></a-entity>
+            
         </a-entity>
 
-        <a-light type="ambient" intensity="0.7"></a-light>
-        <a-light type="directional" position="0 10 0" intensity="0.5"></a-light>
+        <a-light type="ambient" intensity="1"></a-light>
     </a-scene>
 
     <script>
-        const anchor = document.getElementById('pavilion-anchor');
-        const status = document.getElementById('status');
+        const log = document.getElementById('debug-ui');
+        const fileStatus = document.getElementById('file-status');
+        const anchor = document.getElementById('anchor');
+        const model = document.getElementById('m-str');
 
-        // Update status when assets load
-        document.querySelector('a-scene').addEventListener('model-loaded', () => {
-            status.innerText = "Pavilion Ready. Adjust with fingers.";
+        // Check if the GLB file actually loads
+        model.addEventListener('loaded', () => {
+            fileStatus.innerText = "Files: str.glb LOADED SUCCESSFULLY";
+            fileStatus.style.color = "#0f0";
         });
 
-        // 1. GESTURE LOGIC (Built-in to avoid external script failures)
-        let touchStartDist = 0;
-        let initialScale = 4;
-        let touchStartX = 0;
-        let initialRotation = 0;
-
-        window.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                touchStartX = e.touches[0].pageX;
-                initialRotation = anchor.getAttribute('rotation').y;
-            } else if (e.touches.length === 2) {
-                touchStartDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                initialScale = anchor.getAttribute('scale').x;
-            }
+        model.addEventListener('error', () => {
+            fileStatus.innerText = "FILES: str.glb NOT FOUND (404 Error)";
+            fileStatus.style.color = "red";
         });
 
-        window.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1) {
-                let deltaX = e.touches[0].pageX - touchStartX;
-                anchor.setAttribute('rotation', `0 ${initialRotation + deltaX * 0.5} 0`);
-            } else if (e.touches.length === 2) {
-                let dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                let factor = dist / touchStartDist;
-                let newScale = Math.max(0.1, initialScale * factor);
-                anchor.setAttribute('scale', `${newScale} ${newScale} ${newScale}`);
-            }
-        });
-
-        // 2. LAYER CONTROLS
-        function toggle(id) {
-            const el = document.getElementById(id);
-            const isVisible = el.getAttribute('visible');
-            el.setAttribute('visible', !isVisible);
-            document.getElementById('btn-' + id).classList.toggle('inactive');
+        function recenter() {
+            // Put it 3 meters in front of the phone, regardless of where you are pointing
+            anchor.setAttribute('position', '0 0 -3');
+            log.innerHTML += "Command: Recenter executed.<br>";
         }
-
-        // 3. OPACITY LOGIC
-        function setOpacity(val) {
-            document.querySelectorAll('[gltf-model]').forEach(m => {
-                const mesh = m.getObject3D('mesh');
-                if (mesh) {
-                    mesh.traverse((node) => {
-                        if (node.isMesh) {
-                            node.material.transparent = true;
-                            node.material.opacity = val;
-                        }
-                    });
-                }
-            });
-        }
+        
+        // Auto-recenter after 3 seconds
+        setTimeout(recenter, 3000);
     </script>
 </body>
 </html>

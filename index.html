@@ -2,32 +2,26 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion AR - Manual Overlay</title>
-    
+    <title>Pavilion SiteView - Final Fix</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
+        #video-feed { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         
-        /* The real-world camera feed */
-        #video-feed {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: -1;
-        }
+        /* Forces the 3D layer to the very front */
+        a-scene { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .a-canvas { z-index: 10 !important; }
 
         .ui-panel {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; z-index: 1000; background: rgba(255, 255, 255, 0.9);
+            width: 90%; z-index: 100; background: rgba(255, 255, 255, 0.95);
             padding: 15px; border-radius: 20px; font-family: sans-serif;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        
         .btn-row { display: flex; gap: 5px; margin-top: 10px; }
         button { flex: 1; padding: 15px 5px; border-radius: 10px; border: none; background: #333; color: white; font-weight: bold; font-size: 11px; }
-        button.inactive { background: #eee; color: #333; }
-        
-        input[type=range] { width: 100%; accent-color: #333; margin: 10px 0; }
-        label { font-size: 10px; font-weight: bold; color: #333; }
+        button.active { background: #007bff; }
     </style>
 </head>
 
@@ -35,17 +29,16 @@
     <video id="video-feed" autoplay playsinline></video>
 
     <div class="ui-panel">
-        <label>MODEL GHOSTING</label>
-        <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label style="font-size:10px; font-weight:bold;">GHOSTING</label>
+            <button onclick="recenter()" style="flex:none; width:100px; padding:5px; background:#007bff;">RE-CENTER</button>
+        </div>
+        <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)" style="width:100%; margin:10px 0;">
         
         <div class="btn-row">
-            <button id="btn-str" onclick="toggle('str')">STRUCTURE</button>
-            <button id="btn-ext" onclick="toggle('ext')">EXTERIOR</button>
-            <button id="btn-fur" onclick="toggle('fur')">FURNITURE</button>
-        </div>
-        
-        <div style="text-align:center; margin-top:10px; font-size:9px; color:#666; font-weight:bold;">
-            1 FINGER: ROTATE | 2 FINGERS: PINCH SCALE
+            <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
+            <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
+            <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
         </div>
     </div>
 
@@ -58,86 +51,55 @@
 
         <a-camera position="0 1.6 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="pavilion-anchor" position="0 -1 -5" rotation="0 0 0" scale="4 4 4">
-            <a-sphere radius="0.15" color="red"></a-sphere> 
-            
+        <a-entity id="pavilion-anchor" position="0 1 -1" rotation="0 0 0" scale="1 1 1">
+            <a-sphere radius="0.2" color="red"></a-sphere> 
             <a-entity id="str" gltf-model="#m-str"></a-entity>
             <a-entity id="ext" gltf-model="#m-ext"></a-entity>
             <a-entity id="fur" gltf-model="#m-fur"></a-entity>
         </a-entity>
 
-        <a-light type="ambient" intensity="0.8"></a-light>
-        <a-light type="directional" position="1 5 1" intensity="0.5"></a-light>
+        <a-light type="ambient" intensity="1"></a-light>
     </a-scene>
 
     <script>
-        // --- CAMERA SETUP ---
         const video = document.getElementById('video-feed');
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", focusMode: "continuous" } 
-            }).then(stream => {
-                video.srcObject = stream;
-            }).catch(err => {
-                alert("Please enable camera permissions in Chrome settings.");
-            });
-        }
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(stream => { video.srcObject = stream; });
 
-        // --- GESTURE SETUP ---
         const anchor = document.getElementById('pavilion-anchor');
-        let touchStartDist = 0;
-        let initialScale = 4;
-        let touchStartX = 0;
-        let initialRotation = 0;
+        let touchStartDist = 0, initialScale = 1, touchStartX = 0, initialRotation = 0;
 
         window.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                touchStartX = e.touches[0].pageX;
-                initialRotation = anchor.getAttribute('rotation').y;
-            } else if (e.touches.length === 2) {
-                touchStartDist = Math.hypot(
-                    e.touches[0].pageX - e.touches[1].pageX, 
-                    e.touches[0].pageY - e.touches[1].pageY
-                );
+            if (e.touches.length === 1) { touchStartX = e.touches[0].pageX; initialRotation = anchor.getAttribute('rotation').y; }
+            else if (e.touches.length === 2) { 
+                touchStartDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
                 initialScale = anchor.getAttribute('scale').x;
             }
         });
 
         window.addEventListener('touchmove', (e) => {
             if (e.touches.length === 1) {
-                // Drag to Rotate
                 let deltaX = e.touches[0].pageX - touchStartX;
                 anchor.setAttribute('rotation', `0 ${initialRotation + deltaX * 0.5} 0`);
             } else if (e.touches.length === 2) {
-                // Pinch to Scale
-                let dist = Math.hypot(
-                    e.touches[0].pageX - e.touches[1].pageX, 
-                    e.touches[0].pageY - e.touches[1].pageY
-                );
-                let factor = dist / touchStartDist;
-                let newScale = Math.max(0.01, initialScale * factor);
+                let dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                let newScale = (dist / touchStartDist) * initialScale;
                 anchor.setAttribute('scale', `${newScale} ${newScale} ${newScale}`);
             }
         });
 
-        // --- UI LOGIC ---
+        function recenter() { anchor.setAttribute('position', '0 1 -1'); }
         function toggle(id) {
             const el = document.getElementById(id);
             el.setAttribute('visible', !el.getAttribute('visible'));
-            document.getElementById('btn-' + id).classList.toggle('inactive');
+            document.getElementById('btn-' + id).classList.toggle('active');
         }
-
         function setOpacity(val) {
             document.querySelectorAll('[gltf-model]').forEach(m => {
                 const mesh = m.getObject3D('mesh');
-                if (mesh) {
-                    mesh.traverse((node) => {
-                        if (node.isMesh) {
-                            node.material.transparent = true;
-                            node.material.opacity = val;
-                        }
-                    });
-                }
+                if (mesh) mesh.traverse((node) => {
+                    if (node.isMesh) { node.material.transparent = true; node.material.opacity = val; }
+                });
             });
         }
     </script>

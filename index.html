@@ -2,82 +2,138 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView - RECOVERY</title>
+    <title>Pavilion SiteView AR - Final</title>
     
     <script src="https://unpkg.com/aframe@1.5.0/dist/aframe-master.min.js"></script>
     <script src="https://unpkg.com/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        
+        /* Loading Overlay */
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 5000;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
-        .btn {
-            padding: 25px 50px; background: #007bff; color: white;
-            border: none; border-radius: 50px; font-size: 20px; font-weight: bold;
+
+        /* Success Border - Flashes Green when marker is found */
+        #scan-indicator {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            border: 0px solid #00ff00; pointer-events: none; z-index: 4000;
+            transition: border-width 0.2s;
         }
-        #status { margin-top: 20px; color: #0f0; font-size: 12px; text-align: center; padding: 0 20px; }
+
+        /* UI Panel */
+        .ui-panel {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; z-index: 1000; display: none; flex-direction: column; gap: 10px;
+        }
+        
+        .control-row { display: flex; gap: 5px; }
+        button { flex: 1; padding: 18px; border-radius: 12px; border: none; background: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
+        button.active { background: #333; color: white; }
+        
+        .slider-card { background: rgba(255,255,255,0.9); padding: 12px; border-radius: 12px; }
+        input[type=range] { width: 100%; accent-color: #333; }
+
+        .start-btn { padding: 25px 50px; background: #007bff; color: white; border: none; border-radius: 50px; font-size: 20px; font-weight: bold; }
     </style>
 </head>
 
 <body>
+    <div id="scan-indicator"></div>
+
     <div id="overlay">
-        <button id="startBtn" class="btn">START AR CAMERA</button>
-        <div id="status">Waking up AR engine...</div>
+        <button id="startBtn" class="start-btn">ENABLE SITE AR</button>
+        <p id="status" style="color: #0f0; margin-top: 15px; font-size: 12px;">Initializing...</p>
+    </div>
+
+    <div class="ui-panel" id="main-ui">
+        <div class="slider-card">
+            <label style="font-size:10px; font-weight:bold;">GHOSTING (OPACITY)</label>
+            <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
+        </div>
+        <div class="control-row">
+            <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
+            <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
+            <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
+        </div>
     </div>
 
     <a-scene 
         id="scene"
-        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;" 
-        embedded color-space="sRGB" renderer="alpha: true; antialias: true;" vr-mode-ui="enabled: false">
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: yes;" 
+        embedded color-space="sRGB" 
+        renderer="colorManagement: true; alpha: true; antialias: true;" 
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
         
         <a-assets>
-            <a-asset-item id="model" src="str.glb"></a-asset-item>
+            <a-asset-item id="m-str" src="str.glb"></a-asset-item>
+            <a-asset-item id="m-ext" src="ext.glb"></a-asset-item>
+            <a-asset-item id="m-fur" src="fur.glb"></a-asset-item>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        
-        <a-entity mindar-image-target="targetIndex: 0">
-            <a-entity gltf-model="#model" scale="4 4 4"></a-entity>
+
+        <a-entity id="target0" mindar-image-target="targetIndex: 0">
+            <a-entity scale="4 4 4">
+                <a-entity id="str" gltf-model="#m-str"></a-entity>
+                <a-entity id="ext" gltf-model="#m-ext"></a-entity>
+                <a-entity id="fur" gltf-model="#m-fur"></a-entity>
+            </a-entity>
         </a-entity>
+
+        <a-entity id="target1" mindar-image-target="targetIndex: 1">
+            <a-entity scale="4 4 4" position="-15 0 0">
+                <a-entity gltf-model="#m-str"></a-entity>
+            </a-entity>
+        </a-entity>
+
     </a-scene>
 
     <script>
-        const status = document.getElementById('status');
-        const startBtn = document.getElementById('startBtn');
-        const overlay = document.getElementById('overlay');
         const sceneEl = document.querySelector('a-scene');
+        const overlay = document.getElementById('overlay');
+        const status = document.getElementById('status');
+        const indicator = document.getElementById('scan-indicator');
 
-        // 1. WATCH THE HANDSHAKE
-        const checkEngine = setInterval(() => {
-            if (typeof AFRAME !== 'undefined' && sceneEl.systems['mindar-image-system']) {
-                status.innerText = "ENGINE READY. TAP BUTTON.";
-                status.style.color = "#0f0";
-                clearInterval(checkEngine);
-            } else {
-                status.innerText = "Waiting for MindAR to attach to A-Frame...";
-                status.style.color = "#ff0";
+        // Check if MindAR is ready
+        const check = setInterval(() => {
+            if (sceneEl.systems['mindar-image-system']) {
+                status.innerText = "ENGINE READY";
+                clearInterval(check);
             }
         }, 500);
 
-        // 2. FORCE THE CAMERA
-        startBtn.addEventListener('click', async () => {
-            status.innerText = "Requesting Lens Access...";
-            
+        // Manual Start
+        document.getElementById('startBtn').addEventListener('click', async () => {
             try {
                 const arSystem = sceneEl.systems["mindar-image-system"];
-                if (!arSystem) throw new Error("MindAR Plugin didn't load.");
-
                 await arSystem.start();
-                overlay.style.display = 'none'; // Hide overlay on success
-            } catch (err) {
-                status.innerText = "ERROR: " + err.message + "\nTry opening in Samsung Internet Browser.";
-                status.style.color = "red";
-                console.error(err);
+                overlay.style.display = 'none';
+                document.getElementById('main-ui').style.display = 'flex';
+            } catch (e) {
+                alert("Camera Error: Check Permissions");
             }
         });
-    </script>
-</body>
-</html>
+
+        // Visual Feedback Logic
+        const targets = document.querySelectorAll('[mindar-image-target]');
+        targets.forEach(t => {
+            t.addEventListener("targetFound", () => {
+                indicator.style.borderWidth = "15px";
+                if (window.navigator.vibrate) window.navigator.vibrate(100);
+                setTimeout(() => { indicator.style.borderWidth = "0px"; }, 500);
+            });
+        });
+
+        function toggle(id) {
+            const el = document.getElementById(id);
+            el.setAttribute('visible', !el.getAttribute('visible'));
+            document.getElementById('btn-'+id).classList.toggle('active');
+        }
+
+        function setOpacity(val) {
+            document.querySelectorAll('[gltf-model]').forEach(m => {

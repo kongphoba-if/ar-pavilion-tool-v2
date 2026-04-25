@@ -2,41 +2,34 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion AR - Final Fix</title>
+    <title>Pavilion SiteView - RECOVERY</title>
     
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://unpkg.com/aframe@1.5.0/dist/aframe-master.min.js"></script>
+    <script src="https://unpkg.com/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
         body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-        #debug-log { 
-            position: fixed; top: 0; left: 0; width: 100%; 
-            height: 25%; font-size: 11px; color: #0f0; overflow-y: auto; 
-            background: rgba(0,0,0,0.85); z-index: 3000; padding: 10px; border-bottom: 1px solid #333;
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 5000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
-        #center-ui {
-            position: fixed; top: 60%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 2000; text-align: center; width: 80%;
+        .btn {
+            padding: 25px 50px; background: #007bff; color: white;
+            border: none; border-radius: 50px; font-size: 20px; font-weight: bold;
         }
-        .main-btn { 
-            padding: 20px 30px; background: #007bff; color: white; 
-            border: none; border-radius: 50px; font-size: 16px; font-weight: bold;
-            box-shadow: 0 10px 20px rgba(0,123,255,0.3);
-        }
+        #status { margin-top: 20px; color: #0f0; font-size: 12px; text-align: center; padding: 0 20px; }
     </style>
 </head>
 
 <body>
-    <div id="debug-log">INITIALIZING...<br></div>
-
-    <div id="center-ui">
-        <button id="startBtn" class="main-btn">ENABLE SITE AR</button>
-        <p style="font-size:10px; opacity:0.6; margin-top:15px;">Ensure you are on HTTPS</p>
+    <div id="overlay">
+        <button id="startBtn" class="btn">START AR CAMERA</button>
+        <div id="status">Waking up AR engine...</div>
     </div>
 
     <a-scene 
-        id="ar-scene"
+        id="scene"
         mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;" 
         embedded color-space="sRGB" renderer="alpha: true; antialias: true;" vr-mode-ui="enabled: false">
         
@@ -52,51 +45,37 @@
     </a-scene>
 
     <script>
-        const log = (msg, isErr = false) => {
-            const d = document.getElementById('debug-log');
-            d.innerHTML += `<span style="color:${isErr ? '#ff4d4d' : '#0f0'}">${msg}</span><br>`;
-            d.scrollTop = d.scrollHeight;
-        };
+        const status = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const overlay = document.getElementById('overlay');
+        const sceneEl = document.querySelector('a-scene');
 
-        // 1. CHECK IF LIBRARIES LOADED CORRECTLY
-        window.addEventListener('load', () => {
-            if (typeof AFRAME === 'undefined') log("ERROR: A-Frame failed to load!", true);
-            else log("A-Frame 1.4.2 Loaded.");
-            
-            // Check if MindAR registered its system
-            setTimeout(() => {
-                const scene = document.querySelector('a-scene');
-                if (scene.systems['mindar-image-system']) {
-                    log("MindAR Engine: READY");
-                } else {
-                    log("ERROR: MindAR System not registered. Check script order.", true);
-                }
-            }, 500);
-        });
-
-        // 2. FETCH CHECK FOR TARGETS
-        fetch('./targets.mind').then(r => r.ok ? log("Found targets.mind") : log("Missing targets.mind", true));
-
-        // 3. START BUTTON LOGIC
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            log("User triggered Start...");
-            const sceneEl = document.querySelector('a-scene');
-            const arSystem = sceneEl.systems["mindar-image-system"];
-            
-            if (!arSystem) {
-                log("STILL MISSING: MindAR system not found. Refreshing page may help.", true);
-                return;
+        // 1. WATCH THE HANDSHAKE
+        const checkEngine = setInterval(() => {
+            if (typeof AFRAME !== 'undefined' && sceneEl.systems['mindar-image-system']) {
+                status.innerText = "ENGINE READY. TAP BUTTON.";
+                status.style.color = "#0f0";
+                clearInterval(checkEngine);
+            } else {
+                status.innerText = "Waiting for MindAR to attach to A-Frame...";
+                status.style.color = "#ff0";
             }
+        }, 500);
 
+        // 2. FORCE THE CAMERA
+        startBtn.addEventListener('click', async () => {
+            status.innerText = "Requesting Lens Access...";
+            
             try {
-                log("Requesting S24 Ultra Camera...");
+                const arSystem = sceneEl.systems["mindar-image-system"];
+                if (!arSystem) throw new Error("MindAR Plugin didn't load.");
+
                 await arSystem.start();
-                log("SUCCESS: Camera active.");
-                document.getElementById('center-ui').style.display = 'none';
-                document.getElementById('debug-log').style.display = 'none';
+                overlay.style.display = 'none'; // Hide overlay on success
             } catch (err) {
-                log("CAMERA ERROR: " + err.name, true);
-                if (err.name === 'NotAllowedError') log("ACTION REQUIRED: Reset Chrome Camera permissions.", true);
+                status.innerText = "ERROR: " + err.message + "\nTry opening in Samsung Internet Browser.";
+                status.style.color = "red";
+                console.error(err);
             }
         });
     </script>

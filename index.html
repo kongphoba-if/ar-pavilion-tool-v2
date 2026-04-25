@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView - Stability Pro</title>
+    <title>Pavilion SiteView - Memory Safe</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 
     <style>
@@ -21,7 +21,8 @@
         .btn-row { display: flex; gap: 5px; margin-top: 10px; }
         button { flex: 1; padding: 15px 5px; border-radius: 10px; border: none; background: #333; color: white; font-weight: bold; font-size: 11px; }
         button.active { background: #007bff; }
-        .hint { font-size: 8px; text-align: center; margin-top: 8px; color: #888; }
+        label { font-size: 10px; font-weight: bold; color: #333; }
+        input[type=range] { width: 100%; accent-color: #007bff; margin: 10px 0; }
     </style>
 </head>
 
@@ -30,20 +31,20 @@
 
     <div class="ui-panel">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:10px; font-weight:bold;">MODEL GHOSTING</label>
+            <label>MODEL GHOSTING</label>
             <button onclick="recenter()" style="flex:none; width:80px; padding:5px; background:#007bff; font-size:9px;">RE-CENTER</button>
         </div>
-        <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)" style="width:100%; margin:10px 0;">
+        
+        <input type="range" id="opacity-slider" min="0.1" max="1" step="0.1" value="1">
         
         <div class="btn-row">
             <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
-            <button id="btn-ext" class="active" onclick="toggle('ext')|">EXTERIOR</button>
+            <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
             <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
         </div>
-        <div class="hint">1 FINGER: ROTATE | 2 FINGERS: PAN & SCALE</div>
     </div>
 
-    <a-scene embedded renderer="alpha: true; antialias: false; precision: medium;" vr-mode-ui="enabled: false">
+    <a-scene embedded renderer="alpha: true; antialias: false; precision: medium; sortObjects: true;" vr-mode-ui="enabled: false">
         <a-assets>
             <a-asset-item id="m-str" src="str.glb"></a-asset-item>
             <a-asset-item id="m-ext" src="ext.glb"></a-asset-item>
@@ -62,67 +63,90 @@
     </a-scene>
 
     <script>
-        // Use requestAnimationFrame to prevent GPU overload
-        let ticking = false;
         const video = document.getElementById('video-feed');
         const anchor = document.getElementById('pavilion-anchor');
+        const slider = document.getElementById('opacity-slider');
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => { video.srcObject = stream; });
+        // 1. LIMIT CAMERA RESOLUTION (Fixes the Crashing)
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: "environment",
+                width: { ideal: 1280 }, // 720p is the sweet spot for AR stability
+                height: { ideal: 720 }
+            } 
+        }).then(stream => { video.srcObject = stream; });
 
-        let iScale = 1, iRot = 0, iPos = {x:0, y:0};
-        let tDist = 0, tX = 0, tMid = {x:0, y:0};
+        // 2. FIXED TRANSPARENCY LOGIC
+        function applyOpacity() {
+            const val = parseFloat(slider.value);
+            document.querySelectorAll('[gltf-model]').forEach(modelEl => {
+                const mesh = modelEl.getObject3D('mesh');
+                if (mesh) {
+                    mesh.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material.transparent = true;
+                            node.material.opacity = val;
+                            // Critical for GLTF: depthWrite prevents "see-through" artifacts
+                            node.material.depthWrite = (val === 1); 
+                            node.material.needsUpdate = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        slider.addEventListener('input', applyOpacity);
+        
+        // Re-apply whenever a model finishes loading
+        document.querySelectorAll('[gltf-model]').forEach(el => {
+            el.addEventListener('model-loaded', applyOpacity);
+        });
+
+        // 3. OPTIMIZED GESTURES (Throttle logic)
+        let iS = 1, iR = 0, iP = {x:0, y:0};
+        let tD = 0, tX = 0, tM = {x:0, y:0};
+        let ticking = false;
 
         window.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 tX = e.touches[0].pageX;
-                iRot = anchor.getAttribute('rotation').y;
+                iR = anchor.getAttribute('rotation').y;
             } else if (e.touches.length === 2) {
-                tDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                iScale = anchor.getAttribute('scale').x;
-                tMid = { x: (e.touches[0].pageX + e.touches[1].pageX)/2, y: (e.touches[0].pageY + e.touches[1].pageY)/2 };
-                iPos = { x: anchor.getAttribute('position').x, y: anchor.getAttribute('position').y };
+                tD = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                iS = anchor.getAttribute('scale').x;
+                tM = { x: (e.touches[0].pageX + e.touches[1].pageX)/2, y: (e.touches[0].pageY + e.touches[1].pageY)/2 };
+                iP = { x: anchor.getAttribute('position').x, y: anchor.getAttribute('position').y };
             }
         });
 
         window.addEventListener('touchmove', (e) => {
             if (!ticking) {
                 window.requestAnimationFrame(() => {
-                    updateGestures(e);
+                    if (e.touches.length === 1) {
+                        let dx = e.touches[0].pageX - tX;
+                        anchor.setAttribute('rotation', `0 ${iR + dx * 0.4} 0`);
+                    } else if (e.touches.length === 2) {
+                        let curD = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                        let nS = iS * (curD / tD);
+                        anchor.setAttribute('scale', `${nS} ${nS} ${nS}`);
+
+                        let curM = { x: (e.touches[0].pageX + e.touches[1].pageX)/2, y: (e.touches[0].pageY + e.touches[1].pageY)/2 };
+                        let dx = (curM.x - tM.x) * 0.01;
+                        let dy = (curM.y - tM.y) * 0.01;
+                        anchor.setAttribute('position', `${iP.x + dx} ${iP.y - dy} -5`);
+                    }
                     ticking = false;
                 });
                 ticking = true;
             }
         });
 
-        function updateGestures(e) {
-            if (e.touches.length === 1) {
-                let dx = e.touches[0].pageX - tX;
-                anchor.setAttribute('rotation', `0 ${iRot + dx * 0.4} 0`);
-            } else if (e.touches.length === 2) {
-                let curDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                let sFactor = curDist / tDist;
-                let nS = iScale * sFactor;
-                anchor.setAttribute('scale', `${nS} ${nS} ${nS}`);
-
-                let curMid = { x: (e.touches[0].pageX + e.touches[1].pageX)/2, y: (e.touches[0].pageY + e.touches[1].pageY)/2 };
-                let dx = (curMid.x - tMid.x) * 0.01;
-                let dy = (curMid.y - tMid.y) * 0.01;
-                anchor.setAttribute('position', `${iPos.x + dx} ${iPos.y - dy} -5`);
-            }
-        }
-
         function recenter() { anchor.setAttribute('position', '0 0 -5'); anchor.setAttribute('scale', '1 1 1'); }
+        
         function toggle(id) {
             const el = document.getElementById(id);
             el.setAttribute('visible', !el.getAttribute('visible'));
             document.getElementById('btn-' + id).classList.toggle('active');
-        }
-        function setOpacity(v) {
-            document.querySelectorAll('[gltf-model]').forEach(m => {
-                const mesh = m.getObject3D('mesh');
-                if (mesh) mesh.traverse((n) => { if (n.isMesh) { n.material.transparent = true; n.material.opacity = v; } });
-            });
         }
     </script>
 </body>

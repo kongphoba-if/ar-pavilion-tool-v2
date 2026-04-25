@@ -2,70 +2,61 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Pavilion SiteView AR - Final</title>
+    <title>Pavilion AR - Manual Alignment Mode</title>
     
-    <script src="https://unpkg.com/aframe@1.5.0/dist/aframe-master.min.js"></script>
-    <script src="https://unpkg.com/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: transparent; }
         
-        /* Loading Overlay */
-        #overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 5000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        /* THE UI PANEL */
+        .ui-container {
+            position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+            width: 94%; z-index: 1000; display: flex; flex-direction: column; gap: 8px;
+            background: rgba(255, 255, 255, 0.85); padding: 15px; border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3); font-family: sans-serif;
         }
 
-        /* Success Border - Flashes Green when marker is found */
-        #scan-indicator {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            border: 0px solid #00ff00; pointer-events: none; z-index: 4000;
-            transition: border-width 0.2s;
-        }
+        .slider-group { display: flex; flex-direction: column; gap: 2px; }
+        label { font-size: 9px; font-weight: bold; color: #333; text-transform: uppercase; }
+        input[type=range] { width: 100%; accent-color: #007bff; margin: 5px 0; }
 
-        /* UI Panel */
-        .ui-panel {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; z-index: 1000; display: none; flex-direction: column; gap: 10px;
-        }
+        .btn-row { display: flex; gap: 4px; margin-top: 5px; }
+        button { flex: 1; padding: 12px 5px; border-radius: 8px; border: 1px solid #ccc; background: white; font-weight: bold; font-size: 10px; }
+        button.active { background: #333; color: white; border-color: #333; }
         
-        .control-row { display: flex; gap: 5px; }
-        button { flex: 1; padding: 18px; border-radius: 12px; border: none; background: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
-        button.active { background: #333; color: white; }
-        
-        .slider-card { background: rgba(255,255,255,0.9); padding: 12px; border-radius: 12px; }
-        input[type=range] { width: 100%; accent-color: #333; }
-
-        .start-btn { padding: 25px 50px; background: #007bff; color: white; border: none; border-radius: 50px; font-size: 20px; font-weight: bold; }
+        /* Force A-Frame canvas to be transparent */
+        a-scene, .a-canvas { background-color: transparent !important; }
     </style>
 </head>
 
 <body>
-    <div id="scan-indicator"></div>
-
-    <div id="overlay">
-        <button id="startBtn" class="start-btn">ENABLE SITE AR</button>
-        <p id="status" style="color: #0f0; margin-top: 15px; font-size: 12px;">Initializing...</p>
-    </div>
-
-    <div class="ui-panel" id="main-ui">
-        <div class="slider-card">
-            <label style="font-size:10px; font-weight:bold;">GHOSTING (OPACITY)</label>
+    <div class="ui-container">
+        <div class="slider-group">
+            <label>Manual Rotation (Y-Axis)</label>
+            <input type="range" min="0" max="360" value="0" oninput="updateTransform('rotation', this.value)">
+        </div>
+        <div class="slider-group">
+            <label>Manual Zoom / Scale</label>
+            <input type="range" min="0.1" max="20" step="0.1" value="4" oninput="updateTransform('scale', this.value)">
+        </div>
+        <div class="slider-group">
+            <label>Model Ghosting (Opacity)</label>
             <input type="range" min="0.1" max="1" step="0.1" value="1" oninput="setOpacity(this.value)">
         </div>
-        <div class="control-row">
-            <button id="btn-str" class="active" onclick="toggle('str')">STRUCTURE</button>
-            <button id="btn-ext" class="active" onclick="toggle('ext')">EXTERIOR</button>
-            <button id="btn-fur" class="active" onclick="toggle('fur')">FURNITURE</button>
+
+        <div class="btn-row">
+            <button id="btn-str" class="active" onclick="toggleLayer('str')">STRUCTURE</button>
+            <button id="btn-ext" class="active" onclick="toggleLayer('ext')">EXTERIOR</button>
+            <button id="btn-fur" class="active" onclick="toggleLayer('fur')">FURNITURE</button>
         </div>
     </div>
 
     <a-scene 
-        id="scene"
-        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: yes;" 
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no;" 
         embedded color-space="sRGB" 
-        renderer="colorManagement: true; alpha: true; antialias: true;" 
+        renderer="colorManagement: true; alpha: true; transparent: true;" 
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false">
         
@@ -75,65 +66,57 @@
             <a-asset-item id="m-fur" src="fur.glb"></a-asset-item>
         </a-assets>
 
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: false"></a-camera>
 
-        <a-entity id="target0" mindar-image-target="targetIndex: 0">
-            <a-entity scale="4 4 4">
-                <a-entity id="str" gltf-model="#m-str"></a-entity>
-                <a-entity id="ext" gltf-model="#m-ext"></a-entity>
-                <a-entity id="fur" gltf-model="#m-fur"></a-entity>
-            </a-entity>
+        <a-entity id="pavilion-anchor" position="0 0 -5" rotation="0 0 0" scale="4 4 4">
+            <a-entity id="str" gltf-model="#m-str"></a-entity>
+            <a-entity id="ext" gltf-model="#m-ext"></a-entity>
+            <a-entity id="fur" gltf-model="#m-fur"></a-entity>
         </a-entity>
 
-        <a-entity id="target1" mindar-image-target="targetIndex: 1">
-            <a-entity scale="4 4 4" position="-15 0 0">
-                <a-entity gltf-model="#m-str"></a-entity>
-            </a-entity>
-        </a-entity>
-
+        <a-light type="directional" position="1 2 1" intensity="1"></a-light>
+        <a-light type="ambient" intensity="0.5"></a-light>
     </a-scene>
 
     <script>
-        const sceneEl = document.querySelector('a-scene');
-        const overlay = document.getElementById('overlay');
-        const status = document.getElementById('status');
-        const indicator = document.getElementById('scan-indicator');
+        const anchor = document.getElementById('pavilion-anchor');
 
-        // Check if MindAR is ready
-        const check = setInterval(() => {
-            if (sceneEl.systems['mindar-image-system']) {
-                status.innerText = "ENGINE READY";
-                clearInterval(check);
+        // MANUAL ALIGNMENT LOGIC
+        function updateTransform(type, val) {
+            if (type === 'rotation') {
+                anchor.setAttribute('rotation', `0 ${val} 0`);
+            } else if (type === 'scale') {
+                anchor.setAttribute('scale', `${val} ${val} ${val}`);
             }
-        }, 500);
-
-        // Manual Start
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            try {
-                const arSystem = sceneEl.systems["mindar-image-system"];
-                await arSystem.start();
-                overlay.style.display = 'none';
-                document.getElementById('main-ui').style.display = 'flex';
-            } catch (e) {
-                alert("Camera Error: Check Permissions");
-            }
-        });
-
-        // Visual Feedback Logic
-        const targets = document.querySelectorAll('[mindar-image-target]');
-        targets.forEach(t => {
-            t.addEventListener("targetFound", () => {
-                indicator.style.borderWidth = "15px";
-                if (window.navigator.vibrate) window.navigator.vibrate(100);
-                setTimeout(() => { indicator.style.borderWidth = "0px"; }, 500);
-            });
-        });
-
-        function toggle(id) {
-            const el = document.getElementById(id);
-            el.setAttribute('visible', !el.getAttribute('visible'));
-            document.getElementById('btn-'+id).classList.toggle('active');
         }
 
+        // VISIBILITY LOGIC
+        function toggleLayer(id) {
+            const el = document.getElementById(id);
+            const isVisible = el.getAttribute('visible');
+            el.setAttribute('visible', !isVisible);
+            document.getElementById('btn-' + id).classList.toggle('active');
+        }
+
+        // OPACITY LOGIC
         function setOpacity(val) {
             document.querySelectorAll('[gltf-model]').forEach(m => {
+                const mesh = m.getObject3D('mesh');
+                if (mesh) {
+                    mesh.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material.transparent = true;
+                            node.material.opacity = val;
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Ensure transparency works after models load
+        document.querySelectorAll('[gltf-model]').forEach(m => {
+            m.addEventListener('model-loaded', () => setOpacity(document.querySelector('input[min="0.1"]').value));
+        });
+    </script>
+</body>
+</html>
